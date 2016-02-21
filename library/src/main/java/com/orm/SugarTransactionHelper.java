@@ -14,7 +14,7 @@ public class SugarTransactionHelper {
             try {
                 Log.d(SugarTransactionHelper.class.getSimpleName(),
                         "Callback executing within transaction");
-                callback.manipulateInTransaction();
+                callback.manipulateInTransaction(database);
                 database.setTransactionSuccessful();
                 Log.d(SugarTransactionHelper.class.getSimpleName(),
                         "Callback successfully executed within transaction");
@@ -29,6 +29,6 @@ public class SugarTransactionHelper {
     }
 
     public interface Callback {
-        void manipulateInTransaction();
+        void manipulateInTransaction(SQLiteDatabase db);
     }
 }

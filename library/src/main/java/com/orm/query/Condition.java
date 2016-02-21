@@ -11,7 +11,9 @@ public class Condition {
     enum Check {
         EQUALS(" = "),
         GREATER_THAN(" > "),
-        LESSER_THAN(" < "),
+        GREATER_OR_EQUAL(" >= "),
+        LESS_THAN(" < "),
+        LESS_OR_EQUAL(" <= "),
         NOT_EQUALS (" != "),
         LIKE(" LIKE "),
         NOT_LIKE(" NOT LIKE "),
@@ -79,9 +81,21 @@ public class Condition {
         return this;
     }
 
+    public Condition gte(Object value) {
+        setValue(value);
+        check = Check.GREATER_OR_EQUAL;
+        return this;
+    }
+
     public Condition lt(Object value) {
         setValue(value);
-        check = Check.LESSER_THAN;
+        check = Check.LESS_THAN;
+        return this;
+    }
+
+    public Condition lte(Object value) {
+        setValue(value);
+        check = Check.LESS_OR_EQUAL;
         return this;
     }
 
