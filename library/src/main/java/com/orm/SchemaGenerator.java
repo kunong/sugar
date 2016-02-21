@@ -2,11 +2,11 @@ package com.orm;
 
 import android.content.Context;
 import android.database.Cursor;
-import android.database.SQLException;
 import android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
 
 import com.orm.dsl.Column;
+import com.orm.dsl.Index;
 import com.orm.dsl.MultiUnique;
 import com.orm.dsl.NotNull;
 import com.orm.dsl.Unique;
@@ -24,6 +24,7 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 
 import static com.orm.util.ReflectionUtil.getDomainClasses;
@@ -122,7 +123,7 @@ public class SchemaGenerator {
                 sb.append(line);
             }
             MigrationFileParser migrationFileParser = new MigrationFileParser(sb.toString());
-            for(String statement: migrationFileParser.getStatements()){
+            for (String statement : migrationFileParser.getStatements()) {
                 Log.i("Sugar script", statement);
                 if (!statement.isEmpty()) {
                     db.execSQL(statement);
@@ -187,41 +188,39 @@ public class SchemaGenerator {
             String columnName = NamingHelper.toSQLName(column);
             String columnType = QueryBuilder.getColumnType(column.getType());
 
-            if (columnType != null) {
-                if (columnName.equalsIgnoreCase("Id")) {
-                    continue;
+            if (columnName.equalsIgnoreCase("Id")) {
+                continue;
+            }
+
+            if (column.isAnnotationPresent(Column.class)) {
+                Column columnAnnotation = column.getAnnotation(Column.class);
+                columnName = columnAnnotation.name();
+
+                sb.append(", ").append(columnName).append(" ").append(columnType);
+
+                if (columnAnnotation.notNull()) {
+                    if (columnType.endsWith(NULL)) {
+                        sb.delete(sb.length() - 5, sb.length());
+                    }
+                    sb.append(NOT_NULL);
                 }
 
-                if (column.isAnnotationPresent(Column.class)) {
-                    Column columnAnnotation = column.getAnnotation(Column.class);
-                    columnName = columnAnnotation.name();
+                if (columnAnnotation.unique()) {
+                    sb.append(UNIQUE);
+                }
 
-                    sb.append(", ").append(columnName).append(" ").append(columnType);
+            } else {
+                sb.append(", ").append(columnName).append(" ").append(columnType);
 
-                    if (columnAnnotation.notNull()) {
-                        if (columnType.endsWith(NULL)) {
-                            sb.delete(sb.length() - 5, sb.length());
-                        }
-                        sb.append(NOT_NULL);
+                if (column.isAnnotationPresent(NotNull.class)) {
+                    if (columnType.endsWith(NULL)) {
+                        sb.delete(sb.length() - 5, sb.length());
                     }
+                    sb.append(NOT_NULL);
+                }
 
-                    if (columnAnnotation.unique()) {
-                        sb.append(UNIQUE);
-                    }
-
-                } else {
-                    sb.append(", ").append(columnName).append(" ").append(columnType);
-
-                    if (column.isAnnotationPresent(NotNull.class)) {
-                        if (columnType.endsWith(NULL)) {
-                            sb.delete(sb.length() - 5, sb.length());
-                        }
-                        sb.append(NOT_NULL);
-                    }
-
-                    if (column.isAnnotationPresent(Unique.class)) {
-                        sb.append(UNIQUE);
-                    }
+                if (column.isAnnotationPresent(Unique.class)) {
+                    sb.append(UNIQUE);
                 }
             }
         }
@@ -232,11 +231,11 @@ public class SchemaGenerator {
             sb.append(", UNIQUE(");
 
             String[] constraintFields = constraint.split(",");
-            for(int i = 0; i < constraintFields.length; i++) {
+            for (int i = 0; i < constraintFields.length; i++) {
                 String columnName = NamingHelper.toSQLNameDefault(constraintFields[i]);
                 sb.append(columnName);
 
-                if(i < (constraintFields.length -1)) {
+                if (i < (constraintFields.length - 1)) {
                     sb.append(",");
                 }
             }
@@ -250,16 +249,63 @@ public class SchemaGenerator {
         return sb.toString();
     }
 
-    private void createTable(Class<?> table, SQLiteDatabase sqLiteDatabase) {
-        String createSQL = createTableSQL(table);
+    protected String createTableIndexSQL(Class<?> table) {
+        List<Field> fields = ReflectionUtil.getTableFields(table);
+        String tableName = NamingHelper.toSQLName(table);
+        StringBuilder sb = new StringBuilder();
+        List<String> indexStatements = new LinkedList<>();
 
-        if (!createSQL.isEmpty()) {
-            try {
-                sqLiteDatabase.execSQL(createSQL);
-            } catch (SQLException e) {
-                e.printStackTrace();
+        for (Field column : fields) {
+            String columnName = NamingHelper.toSQLName(column);
+
+            if (columnName.equalsIgnoreCase("Id")) {
+                continue;
+            }
+
+            if (column.isAnnotationPresent(Index.class)) {
+                Index indexAnnotation = column.getAnnotation(Index.class);
+
+                String idxStr = indexAnnotation.unique() ? "CREATE UNIQUE INDEX" : "CREATE INDEX";
+                StringBuilder indexBuilder = new StringBuilder(idxStr).append(" IF NOT EXISTS ").append(tableName).append("_").append(columnName).append("_IDX");
+                indexBuilder.append(" ON ").append(tableName).append(" (").append(columnName).append(" asc)").append(";");
+                indexStatements.add(indexBuilder.toString());
             }
         }
+
+        for (String indexStatement : indexStatements) {
+            sb.append(indexStatement);
+        }
+
+        Log.i(SUGAR, "Creating index " + tableName);
+
+        return sb.toString();
+    }
+
+    private void createTable(Class<?> table, SQLiteDatabase sqLiteDatabase) {
+        String createSQL = createTableSQL(table);
+        String createIndexSQL = createTableIndexSQL(table);
+
+        //noinspection SynchronizationOnLocalVariableOrMethodParameter
+        synchronized (sqLiteDatabase) {
+            sqLiteDatabase.beginTransaction();
+
+            try {
+                if (!createSQL.isEmpty()) {
+                    sqLiteDatabase.execSQL(createSQL);
+                }
+
+                if (!createIndexSQL.isEmpty()) {
+                    sqLiteDatabase.execSQL(createIndexSQL);
+                }
+
+                sqLiteDatabase.setTransactionSuccessful();
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                sqLiteDatabase.endTransaction();
+            }
+        }
+
     }
 
 }

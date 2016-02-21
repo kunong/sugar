@@ -7,10 +7,6 @@ import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-public @interface Column {
-    String name();
-
-    @Deprecated boolean unique() default false;
-
-    @Deprecated boolean notNull() default false;
+public @interface Index {
+    boolean unique() default false;
 }
