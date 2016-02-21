@@ -7,20 +7,24 @@ public class SugarTransactionHelper {
 
     public static void doInTransaction(SugarTransactionHelper.Callback callback) {
         SQLiteDatabase database = SugarContext.getSugarContext().getSugarDb().getDB();
-        database.beginTransaction();
+        //noinspection SynchronizationOnLocalVariableOrMethodParameter
+        synchronized (database) {
+            database.beginTransaction();
 
-        try {
-            Log.d(SugarTransactionHelper.class.getSimpleName(),
-                    "Callback executing within transaction");
-            callback.manipulateInTransaction();
-            database.setTransactionSuccessful();
-            Log.d(SugarTransactionHelper.class.getSimpleName(),
-                    "Callback successfully executed within transaction");
-        } catch (Throwable e) {
-            Log.d(SugarTransactionHelper.class.getSimpleName(),
-                    "Could execute callback within transaction", e);
-        } finally {
-            database.endTransaction();
+            try {
+                Log.d(SugarTransactionHelper.class.getSimpleName(),
+                        "Callback executing within transaction");
+                callback.manipulateInTransaction();
+                database.setTransactionSuccessful();
+                Log.d(SugarTransactionHelper.class.getSimpleName(),
+                        "Callback successfully executed within transaction");
+            } catch (Throwable e) {
+                Log.e(SugarTransactionHelper.class.getSimpleName(),
+                        "Could execute callback within transaction", e);
+                throw new RuntimeException(e);
+            } finally {
+                database.endTransaction();
+            }
         }
     }
 
